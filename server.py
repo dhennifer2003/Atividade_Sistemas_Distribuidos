@@ -1,64 +1,89 @@
-# server.py
 import rpyc
 import os
 from datetime import datetime, timedelta
 
-class FileTransferService(rpyc.Service):
+class ServicoTransferenciaArquivos(rpyc.Service):
     def __init__(self):
-        self.interests = {}  # Dicionário para armazenar interesses dos clientes
+        self.interesses = {}  # Dicionário para armazenar interesses dos clientes
 
     def on_connect(self, conn):
-        print("Client connected")
+        print("Cliente conectado")
 
     def on_disconnect(self, conn):
-        print("Client disconnected")
+        print("Cliente desconectado")
 
-    def exposed_upload_file(self, filename, data):
-        with open(filename, 'wb') as f:
-            f.write(data)
-        print(f"File {filename} uploaded successfully")
-        self._notify_interested_clients(filename)
-        return f"File {filename} uploaded successfully"
+    def exposed_fazer_upload_arquivo(self, nome_arquivo, dados):
+        try:
+            with open(nome_arquivo, 'wb') as f:
+                f.write(dados)
+            print(f"Arquivo {nome_arquivo} enviado com sucesso")
+            self._notificar_clientes_interessados(nome_arquivo)
+            return f"Arquivo {nome_arquivo} enviado com sucesso"
+        except Exception as e:
+            print(f"Erro durante o envio do arquivo: {e}")
+            return f"Falha ao enviar o arquivo {nome_arquivo}: {e}"
 
-    def exposed_list_files(self):
-        files = os.listdir('.')
-        return [f for f in files if os.path.isfile(f)]
+    def exposed_listar_arquivos(self):
+        try:
+            arquivos = os.listdir('.')
+            return [f for f in arquivos if os.path.isfile(f)]
+        except Exception as e:
+            print(f"Erro ao listar arquivos: {e}")
+            return []
 
-    def exposed_download_file(self, filename):
-        if not os.path.exists(filename):
-            raise FileNotFoundError(f"File {filename} does not exist")
+    def exposed_fazer_download_arquivo(self, nome_arquivo):
+        try:
+            if not os.path.exists(nome_arquivo):
+                raise FileNotFoundError(f"Arquivo {nome_arquivo} não existe")
 
-        with open(filename, 'rb') as f:
-            data = f.read()
-        return data
+            with open(nome_arquivo, 'rb') as f:
+                dados = f.read()
+            return dados
+        except Exception as e:
+            print(f"Erro durante o download do arquivo: {e}")
+            raise e  # Relevantar a exceção para informar o cliente
 
-    def exposed_register_interest(self, filename, client_ref, duration):
-        expiry_time = datetime.now() + timedelta(seconds=duration)
-        self.interests[filename] = (client_ref, expiry_time)
-        print(f"Interest registered for file {filename} until {expiry_time}")
-        return f"Interest registered for file {filename} until {expiry_time}"
+    def exposed_registrar_interesse(self, nome_arquivo, ref_cliente, duracao):
+        try:
+            tempo_expiracao = datetime.now() + timedelta(segundos=duracao)
+            self.interesses[nome_arquivo] = (ref_cliente, tempo_expiracao)
+            print(f"Interesse registrado para o arquivo {nome_arquivo} até {tempo_expiracao}")
+            return f"Interesse registrado para o arquivo {nome_arquivo} até {tempo_expiracao}"
+        except Exception as e:
+            print(f"Erro ao registrar interesse por {nome_arquivo}: {e}")
+            return f"Falha ao registrar interesse por {nome_arquivo}: {e}"
 
-    def exposed_cancel_interest(self, filename):
-        if filename in self.interests:
-            del self.interests[filename]
-            print(f"Interest for file {filename} cancelled")
-            return f"Interest for file {filename} cancelled"
-        else:
-            return f"No interest found for file {filename}"
+    def exposed_cancelar_interesse(self, nome_arquivo):
+        try:
+            if nome_arquivo in self.interesses:
+                del self.interesses[nome_arquivo]
+                print(f"Interesse pelo arquivo {nome_arquivo} cancelado")
+                return f"Interesse pelo arquivo {nome_arquivo} cancelado"
+            else:
+                return f"Nenhum interesse encontrado para o arquivo {nome_arquivo}"
+        except Exception as e:
+            print(f"Erro ao cancelar interesse por {nome_arquivo}: {e}")
+            return f"Falha ao cancelar interesse por {nome_arquivo}: {e}"
 
-    def _notify_interested_clients(self, filename):
-        if filename in self.interests:
-            client_ref, expiry_time = self.interests[filename]
-            if datetime.now() <= expiry_time:
-                try:
-                    client_ref.root.notify_file_available(filename)
-                    print(f"Notification sent to client for file {filename}")
-                except Exception as e:
-                    print(f"Failed to notify client for file {filename}: {e}")
-            del self.interests[filename]
+    def _notificar_clientes_interessados(self, nome_arquivo):
+        try:
+            if nome_arquivo in self.interesses:
+                ref_cliente, tempo_expiracao = self.interesses[nome_arquivo]
+                if datetime.now() <= tempo_expiracao:
+                    try:
+                        ref_cliente.root.notificar_arquivo_disponivel(nome_arquivo)
+                        print(f"Notificação enviada ao cliente para o arquivo {nome_arquivo}")
+                    except Exception as e:
+                        print(f"Falha ao notificar o cliente sobre o arquivo {nome_arquivo}: {e}")
+                del self.interesses[nome_arquivo]
+        except Exception as e:
+            print(f"Erro ao notificar clientes interessados: {e}")
 
 if __name__ == "__main__":
     from rpyc.utils.server import ThreadedServer
-    server = ThreadedServer(FileTransferService, port=18861)
-    print("Server started on port 18861")
-    server.start()
+    try:
+        servidor = ThreadedServer(ServicoTransferenciaArquivos, port=18861)
+        print("Servidor iniciado na porta 18861")
+        servidor.start()
+    except Exception as e:
+        print(f"Falha ao iniciar o servidor: {e}")
